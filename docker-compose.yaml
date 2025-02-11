@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+
+  redis:
+    image: redis:latest
+    restart: always
+    ports:
+      - "6379:6379"
+    command: redis-server
+    healthcheck:
+      test: [ "CMD-SHELL", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  
+  parser_bybit:
+    build: .
+    # env_file:
+    #   - .env-test
+    volumes:
+      - .:/app
+    restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: python -m parsers.bybit
+        
+  parser_gate:
+    build: .
+    # env_file:
+    #   - .env-test
+    volumes:
+      - .:/app
+    restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: python -m parsers.gate
+
+  scanner:
+    build: .
+    # env_file:
+    #   - .env-test
+    volumes:
+      - .:/app
+    depends_on:
+      parser_bybit:
+        condition: service_started
+      parser_gate:
+        condition: service_started
+    command: python scanner.py
+
+  scanner_for_telegram:
+    build: .
+    # env_file:
+    #   - .env-test
+    volumes:
+      - .:/app
+    depends_on:
+      scanner:
+        condition: service_started
+    command: python scanner_for_telegram.py
+
+  telegram_bot:
+    build: .
+    volumes:
+      - .:/app
+    depends_on:
+      parser_gate:
+        condition: service_started
+      parser_bybit:
+        condition: service_started
+    command: python telegram_bot.py
+   
+  mongodb:
+    image: mongo:4.4.18
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: username
+      MONGO_INITDB_ROOT_PASSWORD: password
+    ports:
+      - "27017:27017"
+    volumes:
+      - data:/app
+
+
+volumes:
+  data:
