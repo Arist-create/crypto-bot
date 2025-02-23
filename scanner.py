@@ -1,11 +1,12 @@
 from facades.redis import redis
 from datetime import datetime
-from parsers.bybit import get_pairs
+from parsers.get_list_of_pairs import get_pairs
 import time
 import asyncio
 from facades.mongo import mongo
 import traceback
 from config import config
+from scanner_for_telegram import get_arbs
 
 PERCENT_IN = config.PERCENT_IN if config.PERCENT_IN else 0.0
 
@@ -13,12 +14,16 @@ symbols = None
 last_update = None
 
 
-async def main():
+async def scanner():
     global symbols
     global last_update
     await mongo.delete_all()
     while True:
-        if not symbols or not last_update or (datetime.now() - last_update).total_seconds() > 600:
+        if (
+            not symbols
+            or not last_update
+            or (datetime.now() - last_update).total_seconds() > 600
+        ):
             symbols = await get_pairs()
             last_update = datetime.now()
         results = await asyncio.gather(*[compare_prices(symbol) for symbol in symbols])
@@ -36,48 +41,60 @@ async def main():
             ]
         )
 
+
 async def compare_prices(symbol: str):
-    price_bybit, price_gate, contract_size = await asyncio.gather(
-        redis.get(f"{symbol}@BYBIT"),
+    price_mexc, price_gate, mexc_info, gate_info = await asyncio.gather(
+        redis.get(f"{symbol}@MEXC"),
         redis.get(f"{symbol}@GATE"),
-        redis.get(f"{symbol}@contract_size"),
+        redis.get(f"{symbol}@MEXC@info"),
+        redis.get(f"{symbol}@GATE@info"),
     )
-    if not price_bybit or not price_gate:
+    if not price_mexc or not price_gate or not mexc_info or not gate_info:
         return
-    bybit_asks, bybit_bids, gate_asks, gate_bids = price_bybit.get("asks"), price_bybit.get("bids"), price_gate.get("asks"), price_gate.get("bids")
-    if not bybit_asks or not bybit_bids or not gate_asks or not gate_bids:
+
+    funding_rate_mexc, funding_rate_gate = (
+        mexc_info.get("funding_rate"),
+        gate_info.get("funding_rate"),
+    )
+    mexc_asks, mexc_bids, gate_asks, gate_bids = (
+        price_mexc.get("asks"),
+        price_mexc.get("bids"),
+        price_gate.get("asks"),
+        price_gate.get("bids"),
+    )
+    if not mexc_asks or not mexc_bids or not gate_asks or not gate_bids:
         return
-    bybit_best_bid = bybit_bids[0].get("p")
+    mexc_best_bid = mexc_bids[0].get("p")
     gate_best_bid = gate_bids[0].get("p")
-    bybit_best_ask = bybit_asks[0].get("p")
+    mexc_best_ask = mexc_asks[0].get("p")
     gate_best_ask = gate_asks[0].get("p")
-    gate_size_ask = gate_asks[0].get("s")
-    gate_size_bid = gate_bids[0].get("s")
-    bybit_size_ask = bybit_asks[0].get("s")
-    bybit_size_bid = bybit_bids[0].get("s")
 
     # if bybit_best_bid > gate_best_ask:
-    percent_1 = ((bybit_best_bid - gate_best_ask) / gate_best_ask) * 100
-    percent_out_1 = ((bybit_best_ask - gate_best_bid) / gate_best_ask) * 100
+    percent_1 = ((mexc_best_bid - gate_best_ask) / gate_best_ask) * 100
+    percent_out_1 = ((mexc_best_ask - gate_best_bid) / gate_best_ask) * 100
     # elif gate_best_bid > bybit_best_ask:
-    percent_2 = ((gate_best_bid - bybit_best_ask) / bybit_best_ask) * 100
-    percent_out_2 = ((gate_best_ask - bybit_best_bid) / bybit_best_ask) * 100
+    percent_2 = ((gate_best_bid - mexc_best_ask) / mexc_best_ask) * 100
+    percent_out_2 = ((gate_best_ask - mexc_best_bid) / mexc_best_ask) * 100
     return [
         {
             "symbol": symbol,
-            "percent": percent_1,
+            "funding_mexc": funding_rate_mexc,
+            "funding_gate": funding_rate_gate,
+            "percent": percent_1 + funding_rate_mexc - funding_rate_gate,
+            "percent_without_funding": percent_1,
             "percent_out": percent_out_1,
             "long": "gate",
-            "short": "bybit",
-            "min_vol_for_trade_in_usdt": min(bybit_best_bid*bybit_size_bid, gate_best_ask*gate_size_ask*contract_size),
+            "short": "mexc",
         },
         {
             "symbol": symbol,
-            "percent": percent_2,
+            "funding_mexc": funding_rate_mexc,
+            "funding_gate": funding_rate_gate,
+            "percent": percent_2 + funding_rate_gate - funding_rate_mexc,
+            "percent_without_funding": percent_2,
             "percent_out": percent_out_2,
-            "long": "bybit",
+            "long": "mexc",
             "short": "gate",
-            "min_vol_for_trade_in_usdt": min(bybit_best_ask*bybit_size_ask, gate_best_bid*gate_size_bid*contract_size),
         },
     ]
 
@@ -94,6 +111,9 @@ async def put_in_db(result: dict):
                 "percent": result.get("percent"),
                 "start": result.get("start"),
                 "percent_out": result.get("percent_out"),
+                "funding_mexc": result.get("funding_mexc"),
+                "funding_gate": result.get("funding_gate"),
+                "percent_without_funding": result.get("percent_without_funding"),
             },
         )
         return
@@ -102,8 +122,9 @@ async def put_in_db(result: dict):
         result,
         upsert=True,
     )
-    
 
+async def main():
+    await asyncio.gather(scanner(), get_arbs())
 
 if __name__ == "__main__":
     while True:

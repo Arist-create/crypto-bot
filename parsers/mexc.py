@@ -1,12 +1,17 @@
 import time
 
-import requests
+from parsers.get_list_of_pairs import get_pairs
 import websockets
 import json
 import asyncio
 from facades.redis  import redis
-from facades.mongo import mongo_contract_size
 from datetime import datetime
+from config import config
+
+MEXC_REST_API = config.MEXC_REST_API
+MEXC_WS = config.MEXC_WS
+MEXC_API_KEY = config.MEXC_API_KEY
+MEXC_SECRET_KEY = config.MEXC_SECRET_KEY
 
 
 async def manage_message(websocket):
@@ -36,7 +41,7 @@ async def manage_message(websocket):
 
 async def get_quote_for_futures(symbols):
     async for websocket in websockets.connect(
-        "wss://contract.mexc.com/edge", ping_interval=5, ping_timeout=300
+        f"wss://{MEXC_WS}/edge", ping_interval=5, ping_timeout=300
     ):
         try:
             await asyncio.gather(
@@ -60,7 +65,7 @@ async def get_quote_for_futures(symbols):
 
 async def get_index_price(symbols):
     async for websocket in websockets.connect(
-        "wss://contract.mexc.com/edge", ping_interval=5, ping_timeout=300
+        f"wss://{MEXC_WS}/edge", ping_interval=5, ping_timeout=300
     ):
         try:
             await asyncio.gather(
@@ -94,11 +99,13 @@ async def manage_message_index_price(websocket):
         await asyncio.sleep(0.01)
         data = data["data"]
         index_price = data.get("indexPrice")
+        funding_rate = data.get("fundingRate")
         formatted_data = {
             "index_price": float(index_price), 
+            "funding_rate": float(funding_rate)*100,
             "updatetime": datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
         }
-        await redis.set(f"{pair}@MEXC@index_price", formatted_data)
+        await redis.set(f"{pair}@MEXC@info", formatted_data)
         if k == 200:
             k = 0
             await websocket.send('{"method": "ping"}')
@@ -112,44 +119,6 @@ async def main():
     coroutines.extend([get_index_price(task) for task in tasks])
     await asyncio.gather(*coroutines)
     
-
-
-async def get_pairs():
-    response = requests.get(
-        "https://contract.mexc.com/api/v1/contract/ticker"
-    )
-
-    symbols_mexc = response.json().get("data")
-    symbols_mexc = {
-        i["symbol"]
-        for i in symbols_mexc
-        if i["symbol"][-4:] == "USDT" and i["volume24"] > 300000
-    }
-    response = requests.get(
-        "https://api.gateio.ws/api/v4/futures/usdt/tickers"
-    )
-    symbols_gate = response.json()
-    symbols_gate = {
-        i["contract"]
-        for i in symbols_gate
-        if i["contract"][-4:] == "USDT" and int(i["volume_24h_quote"]) > 300000
-    }
-    symbols = list(symbols_mexc & symbols_gate)
-    response = requests.get(
-        "https://contract.mexc.com/api/v1/contract/detail"
-    )
-    data = response.json().get("data")
-    await mongo_contract_size.delete_all()
-    await asyncio.gather(
-        *[
-            mongo_contract_size.update({"symbol": symbol.get("symbol")}, {
-                "symbol": symbol.get("symbol"),
-                "contract_size": symbol.get("contractSize")
-            }, True)
-            for symbol in data if symbol.get("symbol") in symbols
-        ]
-    )
-    return symbols
 
 
 if __name__ == "__main__":

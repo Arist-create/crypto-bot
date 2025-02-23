@@ -48,6 +48,9 @@ async def beautify_list_for_telegram(arbs: list):
         result.append(f'{pair.get("symbol")}\n')
         result.append(f'Percent: {pair.get("percent"):.2f}\n')
         result.append(f'Percent out: {pair.get("percent_out"):.2f}\n')
+        result.append(f'Funding Mexc: {pair.get("funding_mexc"):.2f}\n')
+        result.append(f'Funding Gate: {pair.get("funding_gate"):.2f}\n')
+        result.append(f'Percent without funding: {pair.get("percent_without_funding"):.2f}\n')
         if pair.get("lifetime"):
             result.append(f'Lifetime: {(pair.get("lifetime") / 60):.2f}\n')
         result.append(f'Long: {pair.get("long")}\n')

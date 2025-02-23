@@ -71,19 +71,19 @@ class GateTrade:
             "reduce_only": reduce_only,
         }
         print(f"Open order Gate: {data}")
-        await ORDER_QUEUE_GATE.put(data)
+        # await ORDER_QUEUE_GATE.put(data)
 
-        # await self._limiter.wait()
-        # headers = await self._get_signature(
-        #     "POST", "/api/v4/futures/usdt/orders", payload_string=json.dumps(data)
-        # )
-        # response = requests.post(
-        #     f"https://{self._gate_rest_api}/api/v4/futures/usdt/orders",
-        #     data=json.dumps(data),
-        #     headers=headers,
-        # )
-        # print(f"Trade Gate: {response.json()}")
-        # return response.json()
+        await self._limiter.wait()
+        headers = await self._get_signature(
+            "POST", "/api/v4/futures/usdt/orders", payload_string=json.dumps(data)
+        )
+        response = requests.post(
+            f"https://{self._gate_rest_api}/api/v4/futures/usdt/orders",
+            data=json.dumps(data),
+            headers=headers,
+        )
+        print(f"Trade Gate: {response.json()}")
+        return response.json()
 
     async def get_balance(self):
         await self._limiter.wait()
@@ -93,6 +93,7 @@ class GateTrade:
             headers=headers,
         )
         balance_gate = response.json().get("available")
+        print(f"Balance Gate: {balance_gate}")
 
         return float(balance_gate)
 
@@ -106,6 +107,7 @@ class GateTrade:
             f"https://{self._gate_rest_api}/api/v4/futures/usdt/positions?{query}",
             headers=headers,
         )
+        print(f"Positions Gate: {response.json()}")
         return response.json()
 
     async def websocket_connection_for_orders(self):
@@ -168,3 +170,4 @@ class GateTrade:
             print(f"Gate message: {message}")
 
 gate_trade = GateTrade()
+

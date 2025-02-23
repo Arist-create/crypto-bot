@@ -10,6 +10,7 @@ from config import config
 
 gate_ws = config.GATE_WS
 
+
 async def manage_message(websocket):
     k = 0
     while True:
@@ -30,16 +31,19 @@ async def manage_message(websocket):
         await asyncio.sleep(0.01)
         data = data["result"]
         asks, bids = data.get("asks"), data.get("bids")
-        asks, bids = [{"p": float(i["p"]), "s": i["s"]} for i in asks], [{"p": float(i["p"]), "s": i["s"]} for i in bids]
+        asks, bids = (
+            [{"p": float(i["p"]), "s": i["s"]} for i in asks],
+            [{"p": float(i["p"]), "s": i["s"]} for i in bids],
+        )
         formatted_data = {
             "asks": asks,
-            "bids": bids, 
-            "updatetime": datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
+            "bids": bids,
+            "updatetime": datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S"),
         }
         await redis.set(f"{pair}@GATE", formatted_data)
         if k == 200:
             k = 0
-            await websocket.send(json.dumps({"channel" : "futures.ping"}))
+            await websocket.send(json.dumps({"channel": "futures.ping"}))
         k += 1
 
 
@@ -72,6 +76,7 @@ async def get_quote_for_futures(symbols):
             await asyncio.sleep(5)
             continue
 
+
 async def get_index_price(symbols):
     async for websocket in websockets.connect(
         f"wss://{gate_ws}/v4/ws/usdt", ping_interval=5, ping_timeout=None
@@ -101,6 +106,7 @@ async def get_index_price(symbols):
             await asyncio.sleep(5)
             continue
 
+
 async def manage_message_index_price(websocket):
     k = 0
     while True:
@@ -114,17 +120,23 @@ async def manage_message_index_price(websocket):
             await asyncio.sleep(0.01)
             for i in data:
                 index_price = i.get("index_price")
+                funding_rate = i.get("funding_rate")
                 formatted_data = {
                     "index_price": float(index_price),
-                    "updatetime": datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
+                    "funding_rate": float(funding_rate)*100,
+                    "updatetime": datetime.strftime(
+                        datetime.now(), "%Y-%m-%d %H:%M:%S"
+                    ),
                 }
-                await redis.set(f"{i.get('contract')}@GATE@index_price", formatted_data)
+                await redis.set(f"{i.get('contract')}@GATE@info", formatted_data)
             if k == 200:
                 k = 0
-                await websocket.send(json.dumps({"channel" : "futures.ping"}))
+                await websocket.send(json.dumps({"channel": "futures.ping"}))
             k += 1
         except:
             print(data)
+
+
 async def main():
     symbols = await get_pairs()
     tasks = [symbols[i : i + 20] for i in range(0, len(symbols), 20)]

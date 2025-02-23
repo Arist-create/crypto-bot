@@ -21,6 +21,12 @@ class BaseConfig:
 
 
 class ProdConfig(BaseConfig):
+    MEXC_WS: Optional[str] = os.getenv("MEXC_WS_PROD")
+    MEXC_REST_API: Optional[str] = os.getenv("MEXC_REST_API_PROD")
+    MEXC_API_KEY: Optional[str] = os.getenv("MEXC_API_KEY_PROD")
+    MEXC_SECRET_KEY: Optional[str] = os.getenv("MEXC_SECRET_KEY_PROD")
+    MEXC_AUTHORIZATION_KEY: Optional[str] = os.getenv("MEXC_AUTHORIZATION_KEY_PROD")
+    
     BYBIT_WS: Optional[str] = os.getenv("BYBIT_WS_PROD")
     BYBIT_REST_API: Optional[str] = os.getenv("BYBIT_REST_API_PROD")
     BYBIT_API_KEY: Optional[str] = os.getenv("BYBIT_API_KEY_PROD")
@@ -33,6 +39,12 @@ class ProdConfig(BaseConfig):
 
 
 class DevConfig(BaseConfig):
+    MEXC_WS: Optional[str] = os.getenv("MEXC_WS")
+    MEXC_REST_API: Optional[str] = os.getenv("MEXC_REST_API")
+    MEXC_API_KEY: Optional[str] = os.getenv("MEXC_API_KEY")
+    MEXC_SECRET_KEY: Optional[str] = os.getenv("MEXC_SECRET_KEY")
+    MEXC_AUTHORIZATION_KEY: Optional[str] = os.getenv("MEXC_AUTHORIZATION_KEY")
+
     BYBIT_WS: Optional[str] = os.getenv("BYBIT_WS")
     BYBIT_REST_API: Optional[str] = os.getenv("BYBIT_REST_API")
     BYBIT_API_KEY: Optional[str] = os.getenv("BYBIT_API_KEY")

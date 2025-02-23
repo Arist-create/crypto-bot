@@ -21,6 +21,9 @@ class Mongo:
 
     async def get_all(self, dictionary: dict = {}):
         return await self.mycollection.find(dictionary).to_list(length=None)
+    
+    async def get_all_sorted(self, dictionary: dict = {}, key: str = "_id", direction: int = 1):
+        return await self.mycollection.find(dictionary).sort(key, direction).to_list(length=None)
 
     async def get(self, dictionary: dict):
         return await self.mycollection.find_one(dictionary)
@@ -38,4 +41,4 @@ class Mongo:
 
 mongo = Mongo("mycollection")
 mongo_trades = Mongo("trades")
-mongo_contract_size = Mongo("contract_size")
+mongo_scanned_trades = Mongo("scanned_trades")
